@@ -348,7 +348,7 @@ function Remove_one_city(tours::Vector{Tour}, city::Int, T::Matrix{Float64}, n_n
     end
 end
 
-function put_city_in_tour(c::Vector{Tour}, city::Int, T::Matrix{Float64}, n_nodes::Int)
+function put_city_in_tour(c::Vector{Tour}, city::Int, T::Matrix{Float64}, n_nodes::Int, service::Vector{Int64})
     least_increase = Inf
     if length(c) >= 2
         best_tour = 0
@@ -358,28 +358,28 @@ function put_city_in_tour(c::Vector{Tour}, city::Int, T::Matrix{Float64}, n_node
             depot = tour[1]
             nt = length(tour)
             if nt == 1
-                increase = T[depot, city] + T[city, depot]
+                increase = T[depot, city] + service[city]
                 if increase < least_increase
                     least_increase = increase
                     best_tour = i
                     best_position = 2
                 end
             else
-                increase = T[depot, city] + T[city, tour[2]] - T[depot, tour[2]]
+                increase = T[depot, city] + service[city] + T[city, tour[2]] - T[depot, tour[2]]
                 if increase < least_increase
                     least_increase = increase
                     best_tour = i
                     best_position = 2
                 end
                 for j = 3:nt
-                    increase = T[tour[j-1], city] + T[city, tour[j]] - T[tour[j-1], tour[j]]
+                    increase = T[tour[j-1], city] + service[city] + T[city, tour[j]] - T[tour[j-1], tour[j]]
                     if increase < least_increase
                         least_increase = increase
                         best_tour = i
                         best_position = j
                     end
                 end
-                increase = T[tour[nt], city] + T[city, depot] - T[tour[nt], depot]
+                increase = T[tour[nt], city] + service[city]
                 if increase < least_increase
                     least_increase = increase
                     best_tour = i
@@ -388,7 +388,7 @@ function put_city_in_tour(c::Vector{Tour}, city::Int, T::Matrix{Float64}, n_node
             end
         end
         insert!(c[best_tour].sequence, best_position, city)
-        c[best_tour].time += least_increase
+        c[best_tour].time = find_tour_length(c[best_tour].sequence[2:end], T, c[best_tour].sequence[1], service)
         if c[best_tour].time > c[1].time
             temp = deepcopy(c[1])
             c[1] = c[best_tour]
@@ -400,32 +400,32 @@ function put_city_in_tour(c::Vector{Tour}, city::Int, T::Matrix{Float64}, n_node
         depot = tour[1]
         nt = length(tour)
         if nt == 1
-            increase = T[depot, city] + T[city, depot]
+            increase = T[depot, city] + service[city]
             if increase < least_increase
                 least_increase = increase
                 best_position = 2
             end
         else
-            increase = T[depot, city] + T[city, tour[2]] - T[depot, tour[2]]
+            increase = T[depot, city] + service[city] + T[city, tour[2]] - T[depot, tour[2]]
             if increase < least_increase
                 least_increase = increase
                 best_position = 2
             end
             for j = 3:nt
-                increase = T[tour[j-1], city] + T[city, tour[j]] - T[tour[j-1], tour[j]]
+                increase = T[tour[j-1], city] + service[city] + T[city, tour[j]] - T[tour[j-1], tour[j]]
                 if increase < least_increase
                     least_increase = increase
                     best_position = j
                 end
             end
-            increase = T[tour[nt], city] + T[city, depot] - T[tour[nt], depot]
+            increase = T[tour[nt], city] + service[city]
             if increase < least_increase
                 least_increase = increase
                 best_position = nt + 1
             end
         end
         insert!(c[1].sequence, best_position, city)
-        c[1].time += least_increase
+        c[1].time = find_tour_length(c[1].sequence[2:end], T, c[1].sequence[1], service)
     end
 end
 
@@ -568,6 +568,108 @@ function tour_crossover2(parent1::Chromosome, parent2::Chromosome, T::Matrix{Flo
     sort!(c, by=x -> x.time, rev=true)
     outsiders = findall(x -> x == 0, counters[n_depot+1:end])
     for city in outsiders
+        put_city_in_tour(c, city+n_depot, T, n_nodes, service)
+    end
+
+    #     chrm = Chromosome(Int[], 0.0, 0.0, c)
+    #     for tour in c
+    #         if tour.cost > chrm.fitness
+    #             chrm.fitness = tour.cost
+    #         end
+    #         for city in tour.sequence
+    #             push!(chrm.genes, city)
+    #         end
+    #     end
+    #     return chrm
+
+    child = Tour[]
+    for tour in c
+        if tour.time != 0.0 
+            push!(child, tour)
+        end
+    end
+
+    return child
+end
+
+function tour_crossover3(parent1::Chromosome, parent2::Chromosome, T::Matrix{Float64}, n_nodes::Int64, n_depot::Int64, distance::Matrix{Float64},
+     service::Vector{Int64}, patient::Vector{Int64}, demand::Vector{Int64}, capacity_v::Int64, EC_G::Int64, VC_G::Int64)
+    #3  At each step, select a tour from parent1, and select the tour with maximum mutual cities from parent2. 
+    # Just keep the mutual cities in one of the tours
+    # All the remaining cities will be placed in the current tours based on a greedy approach (minimum increase)
+    P1 = deepcopy(parent1)
+    P2 = deepcopy(parent2)
+    c = Tour[]
+    m = length(P1.tours)
+
+    for i in 1:m
+        tour1 = P1.tours[i].sequence[2:end]
+        depot = tour1[1]
+        max_intersection = -1
+        tour2 = Int[]
+        mutuals = Int[]
+        r2 = 0
+        for j in 1:length(P2.tours)
+            mutual_cities = intersect(tour1, P2.tours[j].sequence[2:end])
+            inter = length(mutual_cities)
+            if inter > max_intersection
+                max_intersection = inter
+                tour2 = P2.tours[j].sequence[2:end]
+                r2 = j
+                mutuals = mutual_cities
+            end
+        end
+        deleteat!(P2.tours, r2)
+        mutual_indices = Int[]
+        if rand() < 0.5
+            for (j, node) in enumerate(tour1)
+                if node in mutuals
+                    push!(mutual_indices, j)
+                end
+            end
+            cc = tour1[mutual_indices]
+            staff = find_tour_staff(cc, demand)
+            push!(c, Tour(cc, find_tour_length(cc, T, depot, service), staff, find_tour_patient(cc, patient), find_tour_operation_cost(cc, distance, staff, EC_G, VC_G)))
+        else
+            for (j, node) in enumerate(tour2)
+                if node in mutuals
+                    push!(mutual_indices, j)
+                end
+            end
+            cc = tour2[mutual_indices]
+            staff = find_tour_staff(cc, demand)
+            push!(c, Tour(cc, find_tour_length(cc, T, depot, service), staff, find_tour_patient(cc, patient), find_tour_operation_cost(cc, distance, staff, EC_G, VC_G)))
+        end
+    end
+
+    counters = zeros(n_nodes)
+    outsiders = Int[]
+    for tour in c
+        delete_indices = Int[]
+        for (j, node) in enumerate(tour.sequence[2:end])
+            if counters[node] > 0
+                push!(delete_indices, j)
+            else
+                counters[node] += 1
+            end
+        end
+        if length(delete_indices) == length(tour.sequence[2:end]) # all of tour nodes are duplicated node 
+            tour.time = 0.0
+            tour.sequence = Int[tour.sequence[1]]
+        elseif length(delete_indices) > 0 # subsection duplicated node 
+            # tour.time = remove_cities_from_one_tour(tour, delete_indices, T)
+            # deleteat!(tour.sequence, delete_indices.+1)
+            # tour.time += sum([service[node] for node in tour.sequence[2:end]])
+            deleteat!(tour.sequence, delete_indices.+1)
+            tour.time = find_tour_length(tour.sequence[2:end], T, tour.sequence[1], service)
+            tour.staff = find_tour_staff(tour.sequence, demand)
+            tour.patient = find_tour_patient(tour.sequence[2:end], patient)
+        end
+    end
+
+    sort!(c, by=x -> x.time, rev=true)
+    outsiders = findall(x -> x == 0, counters[n_depot+1:end])
+    for city in outsiders
         put_city_in_tour(c, city+n_depot, T, n_nodes)
     end
 
@@ -591,3 +693,190 @@ function tour_crossover2(parent1::Chromosome, parent2::Chromosome, T::Matrix{Flo
 
     return child
 end
+
+
+function tour_crossover4(parent1::Chromosome, parent2::Chromosome, T::Matrix{Float64}, n_nodes::Int64, n_depot::Int64, distance::Matrix{Float64},
+     service::Vector{Int64}, patient::Vector{Int64}, demand::Vector{Int64}, capacity_v::Int64, EC_G::Int64, VC_G::Int64)
+    #10  At each step, select a tour from parent1, and select the tour with maximum mutual cities from parent2. 
+    # Take the order of mutual cities from one tour and enforce it to the other one
+    # All the remaining cities will be placed in the current tours based on a greedy approach (minimum increase)
+    P1 = deepcopy(parent1)
+    P2 = deepcopy(parent2)
+    c = Tour[]
+    m = length(P1.tours)
+
+    for i in 1:m
+        tour1 = P1.tours[i].sequence[2:end]
+        depot = tour1[1]
+        max_intersection = -1
+        tour2 = Int[]
+        mutuals = Int[]
+        r2 = 0
+        for j in 1:length(P2.tours)
+            mutual_cities = intersect(tour1, P2.tours[j].sequence[2:end])
+            inter = length(mutual_cities)
+            if inter > max_intersection
+                max_intersection = inter
+                tour2 = P2.tours[j].sequence[2:end]
+                r2 = j
+                mutuals = mutual_cities
+            end
+        end
+        deleteat!(P2.tours, r2)
+        mutual_indices1 = Int[]
+        mutual_indices2 = Int[]
+
+        for (j, node) in enumerate(tour1)
+            if node in mutuals
+                push!(mutual_indices1, j)
+            end
+        end
+        for (j, node) in enumerate(tour2)
+            if node in mutuals
+                push!(mutual_indices2, j)
+            end
+        end
+        tour1[mutual_indices1] = tour2[mutual_indices2]
+        staff = find_tour_staff(tour1, demand)
+        push!(c, Tour(tour1, find_tour_length(tour1, T, depot, service), staff, find_tour_patient(tour1, patient), find_tour_operation_cost(tour1, distance, staff, EC_G, VC_G)))
+    end
+    counters = zeros(n_nodes)
+    outsiders = Int[]
+    for tour in c
+        delete_indices = Int[]
+        for (j, node) in enumerate(tour.sequence[2:end])
+            if counters[node] > 0
+                push!(delete_indices, j)
+            else
+                counters[node] += 1
+            end
+        end
+        if length(delete_indices) == length(tour.sequence[2:end]) # all of tour nodes are duplicated node 
+            tour.time = 0.0
+            tour.sequence = Int[tour.sequence[1]]
+        elseif length(delete_indices) > 0 # subsection duplicated node 
+            # tour.time = remove_cities_from_one_tour(tour, delete_indices, T)
+            # deleteat!(tour.sequence, delete_indices.+1)
+            # tour.time += sum([service[node] for node in tour.sequence[2:end]])
+            deleteat!(tour.sequence, delete_indices.+1)
+            tour.time = find_tour_length(tour.sequence[2:end], T, tour.sequence[1], service)
+            tour.staff = find_tour_staff(tour.sequence, demand)
+            tour.patient = find_tour_patient(tour.sequence[2:end], patient)
+        end
+    end
+    outsiders = findall(x -> x == 0, counters[n_depot+1:end])
+    for city in outsiders
+        put_city_in_tour(c, city+n_depot, T, n_nodes)
+    end
+
+    child = Tour[]
+    sort!(c, by=x -> x.time, rev=true)
+    for tour in c
+        if tour.time != 0.0 
+            push!(child, tour)
+        end
+    end
+
+    return child
+end
+
+
+function tour_crossover5(parent1::Chromosome, parent2::Chromosome, T::Matrix{Float64}, n_nodes::Int64, n_depot::Int64)
+    #10  At each step, select a tour from parent1, and select the tour with maximum mutual cities from parent2. 
+    # keep the mutual cities in one of the tours, combine the remaining ones and randomly choose half of them and place them greedily
+    # All the remaining cities will be placed in the current tours based on a greedy approach (minimum increase)
+    P1 = deepcopy(parent1)
+    P2 = deepcopy(parent2)
+    c = Tour[]
+    m = length(P1.tours)
+
+    for i in 1:m
+        tour1 = P1.tours[i].sequence
+        depot = tour1[1]
+        max_intersection = -1
+        tour2 = Int[]
+        mutuals = Int[]
+        r2 = 0
+        for j in 1:length(P2.tours)
+            mutual_cities = intersect(tour1, P2.tours[j].sequence)
+            inter = length(mutual_cities)
+            if inter > max_intersection
+                max_intersection = inter
+                tour2 = P2.tours[j].sequence
+                r2 = j
+                mutuals = mutual_cities
+            end
+        end
+        deleteat!(P2.tours, r2)
+        mutual_indices1 = Int[]
+        mutual_indices2 = Int[]
+        rest = union(setdiff(tour1, mutuals), setdiff(tour2, mutuals))
+
+        if length(rest) == 0
+            if rand() < 0.5
+                push!(c, Tour(tour1, find_tour_length(tour1, T, depot)))
+            else
+                push!(c, Tour(tour2, find_tour_length(tour2, T, depot)))
+            end
+        else
+            rest_ = rest[1:rand(1:length(rest))]
+            if rand() < 0.5
+                for (j, node) in enumerate(tour1)
+                    if node in mutuals
+                        push!(mutual_indices1, j)
+                    end
+                end
+                cc = copy(tour1[mutual_indices1])
+            else
+                for (j, node) in enumerate(tour2)
+                    if node in mutuals
+                        push!(mutual_indices2, j)
+                    end
+                end
+                cc = copy(tour2[mutual_indices2])
+            end
+            ccc = Tour[]
+            push!(ccc, Tour(cc, find_tour_length(cc, T, depot)))
+            for city in rest_
+                put_city_in_tour(ccc, city, T, n_nodes)
+            end            
+            push!(c, ccc[1])
+        end
+    end
+
+    counters = zeros(n_nodes)
+    outsiders = Int[]
+    for tour in c
+        delete_indices = Int[]
+        for (j, node) in enumerate(tour.sequence[2:end])
+            if counters[node] > 0
+                push!(delete_indices, j)
+            else
+                counters[node] += 1
+            end
+        end
+        if length(delete_indices) == length(tour.sequence[2:end]) # all of tour nodes are duplicated node 
+            tour.cost = 0.0
+            tour.sequence = Int[tour.sequence[1]]
+        elseif length(delete_indices) > 0 # subsection duplicated node 
+            tour.cost = remove_cities_from_one_tour(tour, delete_indices, T)
+            deleteat!(tour.sequence, delete_indices.+1)
+            tour.time += sum([service[node] for node in tour.sequence[2:end]])
+        end
+    end
+    sort!(c, by=x -> x.cost, rev=true)
+    outsiders = findall(x -> x == 0, counters[n_depot+1:end])
+    for city in outsiders
+        put_city_in_tour(c, city+n_depot, T, n_nodes)
+    end
+
+    child = Tour[]
+    for tour in c
+        if tour.cost != 0.0 
+            push!(child, tour)
+        end
+    end
+
+    return child
+end
+

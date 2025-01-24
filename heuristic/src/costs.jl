@@ -1,12 +1,12 @@
 function calculate_new_cost_add_one(tour::Vector{Int}, depot::Int64, cost::Float64, city::Int, position::Int, T::Matrix{Float64})
     nt = length(tour)
     if nt == 0
-        return T[depot, city] + T[city, depot]
+        return T[depot, city]
     else
         if position == 1
             cost += T[depot, city] + T[city, tour[1]] - T[depot, tour[1]]
         elseif position == nt + 1
-            cost += T[city, depot] + T[tour[nt], city] - T[tour[nt], depot]
+            cost += T[tour[nt], city]
         else
             cost += T[tour[position-1], city] + T[city, tour[position]] - T[tour[position-1], tour[position]]
         end
@@ -76,7 +76,7 @@ function calculate_new_cost_remove_one(tour::Vector{Int}, depot::Int64, cost::Fl
         if position == 1
             cost += T[depot, tour[2]] - T[tour[1], tour[2]] - T[depot, tour[1]]
         elseif position == nt
-            cost += T[tour[nt-1], depot] - T[tour[nt-1], tour[nt]] - T[tour[nt], depot]
+            cost -= T[tour[nt-1], tour[nt]]
         else
             cost += T[tour[position-1], tour[position+1]] - T[tour[position-1], tour[position]] - T[tour[position], tour[position+1]]
         end
@@ -123,24 +123,24 @@ function calculate_new_cost_swap_one(tour1::Vector{Int}, depot1::Int64, cost1::F
     new_cost2 = cost2
 
     if nt1 == 1
-        new_cost1 = T[depot1, city2] + T[city2, depot1]
+        new_cost1 = T[depot1, city2]
     else
         if position1 == 1
             new_cost1 += T[depot1, city2] + T[city2, tour1[2]] - T[depot1, city1] - T[city1, tour1[2]]
         elseif position1 == nt1
-            new_cost1 += T[tour1[nt1-1], city2] + T[city2, depot1] - T[tour1[nt1-1], city1] - T[city1, depot1]
+            new_cost1 += T[tour1[nt1-1], city2] - T[tour1[nt1-1], city1]
         else
             new_cost1 += T[tour1[position1-1], city2] + T[city2, tour1[position1+1]] - T[tour1[position1-1], city1] - T[city1, tour1[position1+1]]
         end
     end
 
     if nt2 == 1
-        new_cost2 = T[depot2, city1] + T[city1, depot2]
+        new_cost2 = T[depot2, city1]
     else
         if position2 == 1
             new_cost2 += T[depot2, city1] + T[city1, tour2[2]] - T[depot2, city2] - T[city2, tour2[2]]
         elseif position2 == nt2
-            new_cost2 += T[tour2[nt2-1], city1] + T[city1, depot2] - T[tour2[nt2-1], city2] - T[city2, depot2]
+            new_cost2 += T[tour2[nt2-1], city1] - T[tour2[nt2-1], city2]
         else
             new_cost2 += T[tour2[position2-1], city1] + T[city1, tour2[position2+1]] - T[tour2[position2-1], city2] - T[city2, tour2[position2+1]]
         end
@@ -318,14 +318,14 @@ function calculate_new_cost_exchange_one(tour::Vector{Int}, depot::Int64, cost::
     if position1 == 1
         cost = cost - T[depot, city] - T[city, tour[2]] + T[depot, tour[2]]
     elseif position1 == nt
-        cost = cost - T[city, depot] - T[tour[nt-1], city] + T[tour[nt-1], depot]
+        cost = cost - T[tour[nt-1], city]
     else
         cost = cost - T[tour[position1-1], city] - T[city, tour[position1+1]] + T[tour[position1-1], tour[position1+1]]
     end
 
     if position2 > position1
         if position2 == nt
-            cost = cost + T[tour[nt], city] + T[city, depot] - T[tour[nt], depot]
+            cost = cost + T[tour[nt], city]
         else
             cost = cost + T[tour[position2], city] + T[city, tour[position2+1]] - T[tour[position2], tour[position2+1]]
         end
@@ -425,14 +425,14 @@ function calculate_new_cost_exchange_two(tour::Vector{Int}, depot::Int64, cost::
         return cost
     end
     if nt == 2
-        cost = T[depot, tour[2]] + service[tour[2]] + T[tour[2], tour[1]] + service[tour[1]] + T[tour[1], depot]
+        cost = T[depot, tour[2]] + service[tour[2]] + T[tour[2], tour[1]] + service[tour[1]]
         return cost
     end
     if position2 == position1 + 1
         if position1 == 1
             cost = cost - T[depot, city1] - T[city2, tour[3]] + T[depot, city2] + T[city1, tour[3]]
         elseif position2 == nt
-            cost = cost - T[city2, depot] - T[tour[nt-2], city1] + T[city1, depot] + T[tour[nt-2], city2]
+            cost = cost - T[tour[nt-2], city1] + T[tour[nt-2], city2]
         else
             cost = cost - T[tour[position1-1], city1] - T[city2, tour[position2+1]] + T[tour[position1-1], city2] + T[city1, tour[position2+1]]
         end
@@ -442,7 +442,7 @@ function calculate_new_cost_exchange_two(tour::Vector{Int}, depot::Int64, cost::
         if position2 == 1
             cost = cost - T[depot, city2] - T[city1, tour[3]] + T[depot, city1] + T[city2, tour[3]]
         elseif position1 == nt
-            cost = cost - T[city1, depot] - T[tour[nt-2], city2] + T[city2, depot] + T[tour[nt-2], city1]
+            cost = cost - T[tour[nt-2], city2] + T[tour[nt-2], city1]
         else
             cost = cost - T[tour[position2-1], city2] - T[city1, tour[position1+1]] + T[tour[position2-1], city1] + T[city2, tour[position1+1]]
         end
@@ -452,8 +452,8 @@ function calculate_new_cost_exchange_two(tour::Vector{Int}, depot::Int64, cost::
         cost = cost - T[depot, city1] - T[city1, tour[2]] + T[depot, tour[2]]
         cost = cost + T[depot, city2] + T[city2, tour[2]] - T[depot, tour[2]]
     elseif position1 == nt
-        cost = cost - T[city1, depot] - T[tour[nt-1], city1] + T[tour[nt-1], depot]
-        cost = cost + T[tour[nt-1], city2] + T[city2, depot] - T[tour[nt-1], depot]
+        cost = cost - T[tour[nt-1], city1]
+        cost = cost + T[tour[nt-1], city2]
     else
         cost = cost + T[tour[position1-1], city2] + T[city2, tour[position1+1]] - T[tour[position1-1], tour[position1+1]]
         cost = cost - T[tour[position1-1], city1] - T[city1, tour[position1+1]] + T[tour[position1-1], tour[position1+1]]
@@ -463,8 +463,8 @@ function calculate_new_cost_exchange_two(tour::Vector{Int}, depot::Int64, cost::
         cost = cost - T[depot, city2] - T[city2, tour[2]] + T[depot, tour[2]]
         cost = cost + T[depot, city1] + T[city1, tour[2]] - T[depot, tour[2]]
     elseif position2 == nt
-        cost = cost - T[city2, depot] - T[tour[nt-1], city2] + T[tour[nt-1], depot]
-        cost = cost + T[tour[nt-1], city1] + T[city1, depot] - T[tour[nt-1], depot]
+        cost = cost - T[tour[nt-1], city2]
+        cost = cost + T[tour[nt-1], city1]
     else
         cost = cost + T[tour[position2-1], city1] + T[city1, tour[position2+1]] - T[tour[position2-1], tour[position2+1]]
         cost = cost - T[tour[position2-1], city2] - T[city2, tour[position2+1]] + T[tour[position2-1], tour[position2+1]]
@@ -483,14 +483,14 @@ function calculate_new_cost_or_opt2(tour::Vector{Int}, depot::Int64, cost::Float
     if position1 == 1
         cost = cost - T[depot, city1] - T[city2, tour[3]] + T[depot, tour[3]]
     elseif position1 == nt - 1
-        cost = cost - T[city2, depot] - T[tour[nt-2], city1] + T[tour[nt-2], depot]
+        cost = cost - T[tour[nt-2], city1]
     else
         cost = cost - T[tour[position1-1], city1] - T[city2, tour[position1+2]] + T[tour[position1-1], tour[position1+2]]
     end
 
     if position1 < position2
         if position2 == nt - 1
-            cost = cost + T[tour[nt], city1] + T[city2, depot] - T[tour[nt], depot]
+            cost = cost + T[tour[nt], city1]
         else 
             cost = cost + T[tour[position2+1], city1] + T[city2, tour[position2+2]] - T[tour[position2+1], tour[position2+2]]
         end
@@ -515,7 +515,7 @@ function calculate_new_cost_or_opt3(tour::Vector{Int}, depot::Int64, cost::Float
     if position1 == 1
         cost = cost - T[depot, city1] - T[city3, tour[4]] + T[depot, tour[4]]
     elseif position1 == nt - 2
-        cost = cost - T[city3, depot] - T[tour[nt-3], city1] + T[tour[nt-3], depot]
+        cost = cost - T[tour[nt-3], city1]
     else
         cost = cost - T[tour[position1-1], city1] - T[city3, tour[position1+3]] + T[tour[position1-1], tour[position1+3]]
     end
@@ -527,7 +527,7 @@ function calculate_new_cost_or_opt3(tour::Vector{Int}, depot::Int64, cost::Float
         end
     else
         if position2 == nt - 2
-            cost = cost + T[tour[nt], city1] + T[city3, depot] - T[tour[nt], depot]
+            cost = cost + T[tour[nt], city1]
         else
             cost = cost + T[tour[position2+2], city1] + T[city3, tour[position2+3]] - T[tour[position2+2], tour[position2+3]]
         end
@@ -545,7 +545,7 @@ function calculate_new_cost_2_opt(tour::Vector{Int}, depot::Int64, time::Float64
     end
 
     if position2 == nt
-        time = time - T[tour[nt], depot] + T[tour[position1], depot]
+        time = time
     else
         time = time - T[tour[position2], tour[position2+1]] + T[tour[position1], tour[position2+1]]
     end

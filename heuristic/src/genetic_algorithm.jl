@@ -90,8 +90,8 @@ function reproduce(TT::Matrix{Float64}, parent1::Chromosome, parent2::Chromosome
     
     child = tour_crossover2(parent1, parent2, TT, n_nodes, n_depot, distance, service, patient, demand, capacity_v, EC_G, VC_G)
     using_depots = check_depot(child)
-    r_paths, r_cost, r_obj = greedy_algorithm_for_red_(using_depots, R, H, TT, distance, service, patient, demand, capacity_room, capacity_man, VC_R, EC_R)
-    
+    r_paths, r_cost, r_obj = exact_assignment_algorithm_for_red_(using_depots, R, H, TT, distance, service, patient, demand, capacity_room, capacity_man, VC_R, EC_R, n_nodes)
+
     obj = child[1].time
     chrm_cost = calculate_costs(child, r_paths, distance, FC, EC_G, VC_G) + r_cost
     S = change_tour_to_gene(child)
@@ -105,7 +105,7 @@ function reproduce(TT::Matrix{Float64}, parent1::Chromosome, parent2::Chromosome
         end
     end
 
-    return Chromosome(S, WG*obj+WR*r_obj, obj, 0.0, chrm_cost, using_depots, child, r_paths, r_cost, r_obj)
+    return Chromosome(S, WG*obj+WR*r_obj, obj, 0.0, chrm_cost, collect(union(Set(using_depots), Set(check_depot(r_paths)))), child, r_paths, r_cost, r_obj)
 
 end
 
@@ -295,17 +295,17 @@ function educate_and_add_the_offspring!(offspring::Chromosome, population::Vecto
 end
 
 function generate_new_generation(node_size::Int64, TT::Matrix{Float64}, close_nodes::Matrix{Bool}, population::Vector{Chromosome}, popsize::Tuple{Int64,Int64}, 
-    k_tournament::Int64, gen_num::Int64, old_best::Float64, improve_count::Int64, mutation_chance::Float64, roullet::Vector{Int}, num_nei::Int, crossover_functions::Vector{Int},
+    k_tournament::Int64, gen_num::Int64, old_best::Float64, old_best_P::Chromosome, improve_count::Int64, mutation_chance::Float64, roullet::Vector{Int}, num_nei::Int, crossover_functions::Vector{Int},
     customers_::Matrix{Float64}, depots_::Matrix{Float64}, F::Vector{Int64}, G::Vector{Int64}, R::Vector{Int64}, H::Vector{Int64}, distance::Matrix{Float64}, service::Vector{Int64}, 
     patient::Vector{Int64}, demand::Vector{Int64}, capacity_vg::Int64, capacity_vr::Int64, capacity_room::Vector{Int64}, capacity_man::Vector{Int64}, FC::Int64, EC_G::Int64, EC_R::Int64, VC_G::Int64, VC_R::Int64, 
-    WG::Int64, WR::Int64, coordinate::Vector{Vector}, t0::Float64, time_limit::Float64, epsilon::Int64, verbose::Bool)
+    WG::Int64, WR::Int64, coordinate::Vector{Vector}, t0::Float64, time_limit::Float64, epsilon::Int64, obj_vec::Vector{Float64}, verbose::Bool)
 
     t1 = time()
 
     mu, sigma = popsize
     n_nodes = node_size 
 
-    if improve_count % 500 == 499
+    if improve_count % 50 == 49
         population = rebalancing(population, TT, customers_, depots_, F, G, R, H, distance, service, patient, demand, capacity_vg, capacity_vr, capacity_room, capacity_man, 
                              FC, EC_G, EC_R, VC_G, VC_R, WG, WR, coordinate, epsilon)
     end
@@ -316,7 +316,7 @@ function generate_new_generation(node_size::Int64, TT::Matrix{Float64}, close_no
 
     # sort_based_on_power!(population, num_nei, F)
 
-    sort!(population, by=x -> x.fitness)
+    sort!(population, by=x -> x.weighted_time)
 
     psize = length(population)
 
@@ -324,7 +324,7 @@ function generate_new_generation(node_size::Int64, TT::Matrix{Float64}, close_no
         offspring = mutate(population[rand(1:5)], TT, distance, service, patient, demand, capacity_vg, FC, EC_G, VC_G, WG, WR, epsilon)
     else
         parent1, parent2 = select_parents(population, k_tournament, psize) 
-        offspring = reproduce(TT, parent1, parent2, crossover_functions, F, G, R, H, distance, service, patient, demand, capacity_vg, capacity_room, capacity_man,
+        offspring = reproduce(TT, parent1, parent2, crossover_functions, F, G, R, H, distance, service, patient, demand, capacity_vg, capacity_room, capacity_man, 
                               FC, EC_G, VC_G, EC_R, VC_R, WG, WR, epsilon)
     end
 
@@ -338,22 +338,27 @@ function generate_new_generation(node_size::Int64, TT::Matrix{Float64}, close_no
     new_best = population[1].weighted_time
     new_best_g_obj = population[1].fitness
     new_best_r_obj = population[1].r_obj
+    new_best_P = population[1]
+
     if round(old_best, digits=3) > round(new_best, digits=3)
+        push!(obj_vec, new_best)
         old_best = new_best
+        old_best_P = new_best_P
         improve_count = 0
     else
+        push!(obj_vec, old_best)
         improve_count += 1
     end
     t2 = time()
 
     if verbose
-        if gen_num % 1000 == 0
+        if gen_num % 100 == 0
             println("Generation ", gen_num, " the best objective is: ", old_best, "   time left: $(round(t0+time_limit -time())) seconds")
         end
     end
     gen_num += 1
 
-    return gen_num, old_best, population, improve_count
+    return gen_num, old_best, old_best_P, improve_count, obj_vec
 end
 
 function perform_genetic_algorithm(
@@ -376,11 +381,11 @@ function perform_genetic_algorithm(
     assignments = assign_patient(depot_vec, Customers_)
     tours = allocate_depot(F, assignments, depot_vec, coordinate)
     tsp_tours, using_depot = find_mdtsp_tour(tours, distance, coordinate)
-    r_obj, r_cost, r_tour = greedy_algorithm_for_red(using_depot, R, H, TT, distance, service, patient, demand, capacity_room, capacity_man, VC_R, EC_R)
+    r_obj, r_cost, r_tour = exact_assignment_algorithm_for_red(using_depot, F, G, R, H, TT, distance, service, patient, demand, capacity_room, capacity_man, VC_R, EC_R)
     Population, old_best = generate_initial_population(TT, mu, sigma, num_depot_vec, tsp_tours, r_obj, r_cost, r_tour, Customers_, F, G, R, H, Return_Depot, 
                                                        distance, service, patient, demand, capacity_vg, capacity_vr, FC, EC_G, EC_R, VC_G, VC_R,
                                                        WG, WR)
-    # println(Population[1])
+    old_best_P = Population[1]
 
     if verbose
         println("The initialization took ", time() - t1, " seconds.")
@@ -390,30 +395,29 @@ function perform_genetic_algorithm(
         println("The initial Operation cost is ", Population[1].total_cost)
     end
 
+    obj_vec = Vector{Float64}()
+    push!(obj_vec, old_best)
     while improve_count < num_iter
         if time() - t1 >= time_limit
             break
         end
 
-        Gen_num, old_best, Population, improve_count = generate_new_generation(node_size, TT, ClosenessT, Population, popsize, k_tournament, Gen_num, old_best,
+        Gen_num, old_best, old_best_P, improve_count, obj_vec = generate_new_generation(node_size, TT, ClosenessT, Population, popsize, k_tournament, Gen_num, old_best, old_best_P,
                                                                                improve_count, mutation_chance, roullet, num_nei, crossover_functions, Customers_, 
                                                                                Depots_, F, G, R, H, distance, service, patient, demand, capacity_vg, capacity_vr, capacity_room, capacity_man, 
-                                                                               FC, EC_G, EC_R, VC_G, VC_R, WG, WR, coordinate, t1, time_limit, epsilon, verbose)
+                                                                               FC, EC_G, EC_R, VC_G, VC_R, WG, WR, coordinate, t1, time_limit, epsilon, obj_vec, verbose)
     end
     t2 = time()
 
     if verbose 
-        println("The best objective achieved in ", Gen_num, " generations is: ", Population[1].weighted_time, " and it took ", t2 - t1, " seconds.")
-        println("The G obj is ", Population[1].fitness)
-        println("The R obj is ", Population[1].r_obj)
-        println("The operation cost is ", Population[1].total_cost, '$')
+        println("The best objective achieved in ", Gen_num, " generations is: ", old_best_P.weighted_time, " and it took ", t2 - t1, " seconds.")
+        println("The G obj is ", old_best_P.fitness)
+        println("The R obj is ", old_best_P.r_obj)
+        println("The operation cost is ", old_best_P.total_cost, '$')
         println("And the best route is: ")
 
-        best_route(Population[1])
+        best_route(old_best_P)
     end
 
-    # println(Population[1])
-    # wait()
-
-    return Population, roullet
+    return old_best_P, roullet, obj_vec
 end

@@ -77,11 +77,11 @@ function SPLIT(TT::Matrix{Float64}, tours::Vector{Vector{Int64}}, service::Vecto
 
                         load += patient[S[j]]
                         if i == j
-                            t = TT[depot, S[j]] + service[S[j]] + TT[S[j], depot]
+                            t = TT[depot, S[j]] + service[S[j]]
                             capa -= demand[S[j]]
                             temp = demand[S[j]]
                         else
-                            t = t - TT[S[j-1], depot] + TT[S[j-1], S[j]] + service[S[j]] + TT[S[j], depot]
+                            t = t + TT[S[j-1], S[j]] + service[S[j]]
                             capa += temp 
                             temp = max(temp, demand[S[j]])
                             capa -= temp 

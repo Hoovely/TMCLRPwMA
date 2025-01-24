@@ -1,16 +1,157 @@
-"
-    greedy_algorithm_for_red func
-    Description: 
-        - Calculating optimal time red patient to hospital
-    Params:
-        - Opening depot vector
-        - Red patient vector
-        - Hospital vector
-        - Travel time matrix 
-    Return:
-        - Vector of red patient allocated hospital, Rescue completion time
-"
-function greedy_algorithm_for_red(using_depot_vec::Vector{Vector}, red_patient::Vector{Int64}, hospital::Vector{Int64}, travel_time::Matrix{Float64}, 
+function set_parameter(TT::Matrix{Float64}, F::Vector{Int64}, R::Vector{Int64}, H::Vector{Int64}, service::Vector{Int64})
+
+    cardinality_R = length(R)
+    T = Matrix{Float64}(undef, length(R), length(F)*length(H))
+
+    index_ = Dict()
+    cnt = 1
+    
+    for h in H
+        for f in F
+            index_[cnt] = [f, h]
+            
+            for (idx, r) in enumerate(R)
+                T[idx, cnt] = TT[f, r] + TT[r, h] + service[r]
+            end
+            cnt += 1
+        end
+    end
+    
+    I = [i for i in 1:cardinality_R]
+    J = [j for j in 1:cnt-1]
+
+    hospital_index_dict = Dict()
+    lb = 1
+    for h in H
+        hospital_index_dict[h] = [f for f in J[lb:lb+length(F)-1]]
+        lb += length(F)
+    end
+
+    return T, index_, I, J, hospital_index_dict
+    
+end
+
+function resource_constraint_assignment_problem(TT::Matrix{Float64}, F::Vector{Int64}, R::Vector{Int64}, H::Vector{Int64}, service::Vector{Int64}, demand::Vector{Int64}, capacity_man::Vector{Int64}, slicing::Int64)
+
+    T, index_, I, J, hospital_index_dict = set_parameter(TT, sort(F), R, H, service)
+
+    # Initialize Cplex model
+    model = Model(CPLEX.Optimizer)
+    
+    # Variable
+    x = @variable(model, x[i in I, j in J], Bin)
+    # x = @variable(model, x[i in I, j in J], lower_bound=0.0, upper_bound=1.0)
+    eR = @variable(model, eR, lower_bound=0.0)
+
+    # Objective function
+    @objective(model, Min, eR)
+
+    # Constraints
+    # Constraint 2
+    for i in I
+        @constraint(model, sum(x[i, j] for j in J) == 1)
+    end
+
+    # # Constraint 3
+    # for j in J
+    #     @constraint(model, sum(x[i, j] for i in I) <= 1)
+    # end
+
+    # Constraint 4
+    for h in H
+        @constraint(model, sum(demand[i+slicing] * x[i, j] for j in hospital_index_dict[h] for i in I) <= capacity_man[h-slicing-length(R)])
+    end
+
+    # Constraint 5
+    for i in I
+        for j in J
+            @constraint(model, T[i, j] * x[i, j] <= eR)
+        end
+    end
+
+    # Solve IP
+    set_optimizer_attribute(model, "CPXPARAM_Threads", 15)
+    set_optimizer_attribute(model, "CPX_PARAM_SCRIND", 0)
+    
+    start_time = time()
+    optimize!(model)
+    solve_time = time() - start_time
+
+    tour_vec = Vector{Vector}()
+    for i in I 
+        for j in J 
+            if value.(x[i, j]) >= 0.9 
+                # if value.(x[i, j]) != 1.0 println("Warning!") end
+                f, h = index_[j][1], index_[j][2]
+                push!(tour_vec, [f, i+slicing, h])
+            end
+        end
+    end
+
+    return objective_value(model), tour_vec
+end
+
+function LP_resource_constraint_assignment_problem(TT::Matrix{Float64}, F::Vector{Int64}, R::Vector{Int64}, H::Vector{Int64}, service::Vector{Int64}, demand::Vector{Int64}, capacity_man::Vector{Int64}, slicing::Int64)
+
+    T, index_, I, J, hospital_index_dict = set_parameter(TT, sort(F), R, H, service)
+
+    # Initialize Cplex model
+    model = Model(CPLEX.Optimizer)
+    
+    # Variable
+    x = @variable(model, x[i in I, j in J], lower_bound=0.0, upper_bound=1.0)
+    # x = @variable(model, x[i in I, j in J], lower_bound=0.0, upper_bound=1.0)
+    eR = @variable(model, eR, lower_bound=0.0)
+
+    # Objective function
+    @objective(model, Min, eR)
+
+    # Constraints
+    # Constraint 2
+    for j in J
+        @constraint(model, sum(x[i, j] for i in I) == 1)
+    end
+
+    # # Constraint 3
+    # for j in J
+    #     @constraint(model, sum(x[i, j] for i in I) <= 1)
+    # end
+
+    # Constraint 4
+    for h in H
+        @constraint(model, sum(demand[i+slicing] * x[i, j] for j in hospital_index_dict[h] for i in I) <= capacity_man[h-slicing-length(R)])
+    end
+
+    # Constraint 5
+    for i in I
+        for j in J
+            @constraint(model, T[i, j] * x[i, j] <= eR)
+        end
+    end
+
+    # Solve IP
+    set_optimizer_attribute(model, "CPXPARAM_Threads", 15)
+    set_optimizer_attribute(model, "CPX_PARAM_SCRIND", 0)
+    
+    start_time = time()
+    optimize!(model)
+    solve_time = time() - start_time
+
+    tour_vec = Vector{Vector}()
+    for i in I 
+        for j in J 
+            if value.(x[i, j]) >= 0.9 
+                # if value.(x[i, j]) != 1.0 println("Warning!") end
+                f, h = index_[j][1], index_[j][2]
+                push!(tour_vec, [f, i+slicing, h])
+            end
+        end
+    end
+
+    return objective_value(model), tour_vec
+end
+
+function exact_assignment_algorithm_for_red(using_depot_vec::Vector{Vector}, F::Vector{Int64}, G::Vector{Int64}, R::Vector{Int64}, H::Vector{Int64}, TT::Matrix{Float64}, 
     distance::Matrix{Float64}, service::Vector{Int64}, patient::Vector{Int64}, demand::Vector{Int64}, capacity_room::Vector{Int64}, capacity_man::Vector{Int64}, VC_R::Int64, EC_R::Int64)
 
     obj_vec = Vector{Float64}()
@@ -19,29 +160,20 @@ function greedy_algorithm_for_red(using_depot_vec::Vector{Vector}, red_patient::
 
     for using_depot in using_depot_vec
 
-        obj = 0.0
-        hospital_cnt = Dict()
         operation_cost = 0
+        trips = Vector{Tour}(undef, length(R))
+        
+        obj, tour_vec = resource_constraint_assignment_problem(TT, using_depot, R, H, service, demand, capacity_man, length(F)+length(G))
 
-        trips = Vector{Tour}(undef, length(red_patient))
-        for (i, r) in enumerate(red_patient)
-            tour = Vector{Int64}()
-            rescue_completion_time = Inf
-            total_cost = Inf
+        for (idx, tour) in enumerate(tour_vec)
+            f, r ,h = tour
+            
+            tour_time = TT[f, r] + TT[r, h] + service[r]
+            total_cost = distance[f, r] + distance[r, h] + VC_R + EC_R * demand[r]
 
-            for f in using_depot
-                for h in hospital
-                    total_time = travel_time[f, r] + travel_time[r, h] + service[r]
-                    if rescue_completion_time > total_time
-                        rescue_completion_time = total_time
-                        tour = [f, r, h]
-                        total_cost = distance[f, r] + distance[r, h] + VC_R + EC_R * demand[r]
-                    end
-                end
-            end
-            trips[i] = Tour(tour, rescue_completion_time, demand[r], Int[patient[r]], total_cost)
-            obj = max(obj, trips[i].time)
-            operation_cost += trips[i].operation_cost
+            trips[idx] = Tour(tour, tour_time, demand[r], Int[patient[r]], total_cost)
+
+            operation_cost += trips[idx].operation_cost
         end
 
         push!(obj_vec, obj)
@@ -53,36 +185,29 @@ function greedy_algorithm_for_red(using_depot_vec::Vector{Vector}, red_patient::
     return obj_vec, cost_vec, trips_vec
 end
 
-function greedy_algorithm_for_red_(using_depot::Vector{Int64}, red_patient::Vector{Int64}, hospital::Vector{Int64}, travel_time::Matrix{Float64}, 
-    distance::Matrix{Float64}, service::Vector{Int64}, patient::Vector{Int64}, demand::Vector{Int64}, capacity_room::Vector{Int64}, capacity_man::Vector{Int64}, VC_R::Int64, EC_R::Int64)
 
-    obj = 0.0
-    hospital_cnt = Dict()
+function exact_assignment_algorithm_for_red_(F::Vector{Int64}, R::Vector{Int64}, H::Vector{Int64}, TT::Matrix{Float64}, 
+    distance::Matrix{Float64}, service::Vector{Int64}, patient::Vector{Int64}, demand::Vector{Int64}, capacity_room::Vector{Int64}, capacity_man::Vector{Int64}, VC_R::Int64, EC_R::Int64, slicing::Int64)
+
     operation_cost = 0
+    trips = Vector{Tour}(undef, length(R))
+    
+    obj, tour_vec = resource_constraint_assignment_problem(TT, F, R, H, service, demand, capacity_man, slicing)
 
-    trips = Vector{Tour}(undef, length(red_patient))
-    for (i, r) in enumerate(red_patient)
-        tour = Vector{Int64}()
-        rescue_completion_time = Inf
-        total_cost = Inf
+    for (idx, tour) in enumerate(tour_vec)
+        f, r ,h = tour
 
-        for f in using_depot
-            for h in hospital
-                total_time = travel_time[f, r] + travel_time[r, h] + service[r]
-                if rescue_completion_time > total_time
-                    rescue_completion_time = total_time
-                    tour = [f, r, h]
-                    total_cost = distance[f, r] + distance[r, h] + VC_R + EC_R * demand[r]
-                end
-            end
-        end
-        trips[i] = Tour(tour, rescue_completion_time, demand[r], Int[patient[r]], total_cost)
-        obj = max(obj, trips[i].time)
-        operation_cost += trips[i].operation_cost
+        tour_time = TT[f, r] + TT[r, h] + service[r]
+        total_cost = distance[f, r] + distance[r, h] + VC_R + EC_R * demand[r]
+
+        trips[idx] = Tour(tour, tour_time, demand[r], Int[patient[r]], total_cost)
+
+        operation_cost += trips[idx].operation_cost
     end
 
     return trips, operation_cost, obj
 end
+
 
 
 # ### Test Data ###

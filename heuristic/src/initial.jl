@@ -537,7 +537,7 @@ function generate_initial_population(TT::Matrix{Float64}, mu::Int64, sigma::Int6
         obj, trips = SPLIT(TT, tsp_tours, service, patient, demand, capacity_vg)
         chrm_cost = calculate_costs(trips, r_tour[idx], distance, FC, EC_G, VC_G)
         best_mdvrp_tours = change_tour_to_gene(trips)
-        population[idx] = Chromosome(best_mdvrp_tours, WG*obj+WR*r_obj[idx], obj, 0.0, chrm_cost+r_cost[idx], check_depot(trips), trips, r_tour[idx], r_cost[idx], r_obj[idx])
+        population[idx] = Chromosome(best_mdvrp_tours, WG*obj+WR*r_obj[idx], obj, 0.0, chrm_cost+r_cost[idx], collect(union(Set(check_depot(trips)), Set(check_depot(r_tour[idx])))), trips, r_tour[idx], r_cost[idx], r_obj[idx])
     end
 
     sort!(population[1:num_depot_vec], by=x -> x.weighted_time)

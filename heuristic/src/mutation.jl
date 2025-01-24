@@ -150,7 +150,6 @@ end
 
 function put_city_in_short_tour(c::Vector{Tour}, city::Int, T::Matrix{Float64}, service::Vector{Int64}, patient::Vector{Int64}, demand::Vector{Int64}, capacity_v::Int64)
     least_increase = Inf
-    least_real_increase = Inf
     best_tour = 0
     best_position = 0
     time_lst = [tour.time for tour in c]
@@ -164,10 +163,9 @@ function put_city_in_short_tour(c::Vector{Tour}, city::Int, T::Matrix{Float64}, 
         if capacity_v - max(demand[city], c[i].staff) < patient[city] + sum(c[i].patient) continue end
 
         if nt == 0 # destroied tour
-            real_increase = T[depot, city] + service[city] + T[city, depot]
+            real_increase = T[depot, city] + service[city]
             if real_increase < least_increase
                 least_increase = real_increase
-                least_real_increase = real_increase
                 best_tour = i
                 best_position = 1
             end
@@ -176,7 +174,6 @@ function put_city_in_short_tour(c::Vector{Tour}, city::Int, T::Matrix{Float64}, 
             increase = penalties[i] * real_increase
             if increase < least_increase
                 least_increase = increase
-                least_real_increase = real_increase
                 best_tour = i
                 best_position = 1
             end
@@ -185,16 +182,14 @@ function put_city_in_short_tour(c::Vector{Tour}, city::Int, T::Matrix{Float64}, 
                 increase = penalties[i] * real_increase
                 if increase < least_increase
                     least_increase = increase
-                    least_real_increase = real_increase
                     best_tour = i
                     best_position = j
                 end
             end
-            real_increase = T[tour[nt], city] + service[city] + T[city, depot] - T[tour[nt], depot]
+            real_increase = T[tour[nt], city] + service[city]
             increase = penalties[i] * real_increase
             if increase < least_increase
                 least_increase = increase
-                least_real_increase = real_increase
                 best_tour = i
                 best_position = nt + 1
             end
@@ -202,7 +197,7 @@ function put_city_in_short_tour(c::Vector{Tour}, city::Int, T::Matrix{Float64}, 
     end
     if best_tour > 0
         insert!(c[best_tour].sequence, best_position+1, city)
-        c[best_tour].time += least_real_increase
+        c[best_tour].time = find_tour_length(c[best_tour].sequence[2:end], T, c[best_tour].sequence[1], service)
 
         return true
     else
@@ -250,7 +245,7 @@ function rearange_nodes(chrm_::Chromosome, T::Matrix{Float64}, distance::Matrix{
     end
 
     if flag
-        chrm = Chromosome(Int[], 0.0, 0.0, 0.0, 0.0, check_depot(c), c, chrm_.reds_path, chrm_.r_cost, chrm_.r_obj)
+        chrm = Chromosome(Int[], 0.0, 0.0, 0.0, 0.0, collect(union(Set(check_depot(c)), Set(check_depot(chrm_.reds_path)))), c, chrm_.reds_path, chrm_.r_cost, chrm_.r_obj)
         delete_tours = Int[]
         obj = 0.0
         for (index, tour) in enumerate(c)
@@ -311,7 +306,7 @@ function destroy_and_build(chrm_::Chromosome, T::Matrix{Float64}, distance::Matr
     end
 
     if flag
-        chrm = Chromosome(Int[], 0.0, 0.0, 0.0, 0.0, check_depot(c), c, chrm_.reds_path, chrm_.r_cost, chrm_.r_obj)
+        chrm = Chromosome(Int[], 0.0, 0.0, 0.0, 0.0, collect(union(Set(check_depot(c)), Set(check_depot(chrm_.reds_path)))), c, chrm_.reds_path, chrm_.r_cost, chrm_.r_obj)
         delete_tours = Int[]
         obj = 0.0
         for (index, tour) in enumerate(c)
@@ -466,10 +461,9 @@ end
 function find_tour_length(tt::Vector{Int}, T::Matrix{Float64}, depot::Int64, service::Vector{Int64})
     t = copy(tt)
     pushfirst!(t, depot)
-    push!(t, depot)
     z = 0.0
     for i in 1:length(t)-1
-        z += T[t[i], t[i+1]] + service[t[i]]
+        z += T[t[i], t[i+1]] + service[t[i+1]]
     end
     return z
 end

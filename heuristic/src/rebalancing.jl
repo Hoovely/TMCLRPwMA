@@ -20,12 +20,11 @@ function new_build_vehicle(new_chrm::Chromosome, TT::Matrix{Float64}, distance::
         tour1 = Tour(vcat(f, S[1:cut_point]), time1, 0, Int[], 0.0)
         for (idx, node) in enumerate(tour1.sequence)
             if node == tour1.sequence[end]
-                next = tour1.sequence[1]
+                time1 += service[node]
             else
                 next = tour1.sequence[idx+1]
+                time1 += TT[node, next] + service[node]
             end
-
-            time1 += TT[node, next] + service[node]
 
             if idx > 1
                 tour1.staff = max(tour1.staff, demand[node])
@@ -39,13 +38,12 @@ function new_build_vehicle(new_chrm::Chromosome, TT::Matrix{Float64}, distance::
         tour2 = Tour(vcat(f, S[cut_point+1:end]), time2, 0, Int[], 0.0)
         for (idx, node) in enumerate(tour2.sequence)
             if node == tour2.sequence[end]
-                next = tour2.sequence[1]
+                time2 += service[node]
             else
                 next = tour2.sequence[idx+1]
+                time2 += TT[node, next] + service[node]
             end
             
-            time2 += TT[node, next] + service[node]
-
             if idx > 1
                 tour2.staff = max(tour2.staff, demand[node])
                 push!(tour2.patient, patient[node])
@@ -173,6 +171,14 @@ function rebalancing(population::Vector{Chromosome}, TT::Matrix{Float64}, custom
                       capacity_vg::Int64, capacity_vr::Int64, capacity_room::Vector{Int64}, capacity_man::Vector{Int64}, FC::Int64, EC_G::Int64, EC_R::Int64, VC_G::Int64, VC_R::Int64, WG::Int64, WR::Int64,
                       coordinate::Vector{Vector}, epsilon::Int64)
 
+    # for chrm in population
+    #     println(chrm.tours)
+    #     println(chrm.reds_path)
+    #     println(chrm.total_cost)
+    #     println(chrm.depots)
+    #     println("=======================")
+    # end
+
     for (idx, chrm) in enumerate(population)
         chrm_ = deepcopy(chrm)
         F_ = chrm_.depots
@@ -183,9 +189,10 @@ function rebalancing(population::Vector{Chromosome}, TT::Matrix{Float64}, custom
 
         if remain <= 0 continue end
 
-        add_num_g = floor(Int64, length(G)/(length(F_)+1))
-        K′ = ceil(Int64, add_num_g/5)
-        exp_cost = (FC + K′ * VC_G) * 1.2
+        # add_num_g = floor(Int64, length(G)/(length(F_)+1))
+        # K′ = ceil(Int64, add_num_g/5)
+        # exp_cost = (FC + K′ * VC_G) * 1.2
+        exp_cost = FC
 
         if remain < exp_cost || length(F_) == length(F)
             max_route_length = 0
@@ -216,8 +223,8 @@ function rebalancing(population::Vector{Chromosome}, TT::Matrix{Float64}, custom
             tours_′ = change_tour_to_gene(trips)
 
             # Calculate total cost
-            r_tours′, r_obj′, r_cost′ = greedy_algorithm_for_red_(F_′, R, H, TT, distance, service, patient, demand, capacity_room, capacity_man, VC_R, EC_R)
-            operation_cost_ = calculate_costs(trips, r_tours, distance, FC, EC_G, VC_G)+r_cost
+            r_tours′, r_cost′, r_obj′  = exact_assignment_algorithm_for_red_(F_′, R, H, TT, distance, service, patient, demand, capacity_room, capacity_man, VC_R, EC_R, length(F)+length(G))
+            operation_cost_ = calculate_costs(trips, r_tours′, distance, FC, EC_G, VC_G)+r_cost′
 
             if operation_cost_ > epsilon
                 # println("============add open cost============")
@@ -225,8 +232,12 @@ function rebalancing(population::Vector{Chromosome}, TT::Matrix{Float64}, custom
                 continue
             end
 
-            population[idx] = Chromosome(tours_′, WG*obj′+WR*r_obj, obj′, 0.0, operation_cost_, F_′, trips, r_tours′, r_obj′, r_cost′)
+            population[idx] = Chromosome(tours_′, WG*obj′+WR*r_obj′, obj′, 0.0, operation_cost_, collect(union(Set(check_depot(trips)), Set(check_depot(r_tours′)))), trips, r_tours′, r_cost′, r_obj′)
         end
+
+        # if chrm_.weighted_time > population[idx].weighted_time 
+        #     println("Improvement! $(chrm_.weighted_time) ==> $(population[idx].weighted_time )")
+        # end
     end
 
     return population

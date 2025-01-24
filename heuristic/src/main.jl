@@ -48,22 +48,26 @@ function callback_variable(chrm::Chromosome)
         end
     end
 
+    red_paths = Vector{Vector}()
     for tour in chrm.reds_path
         push!(y_sol, tour.sequence[1])
         push!(x_sol, [tour.sequence[1], tour.sequence[2]])
         push!(x_sol, [tour.sequence[2], tour.sequence[3]])
+
+        push!(red_paths, [tour.sequence[1], tour.sequence[2], tour.sequence[3]])
     end
 
     println(x_sol)
 
     y_sol = collect(Set(y_sol))
 
-    return [x_sol, y_sol]
+    return [x_sol, y_sol, red_paths]
     
 end
 
-function save_result(problem, cutting_num, TMC_num, green_num, red_num, hospital_num, WG, WR, epsilon, operation_cost, obj, calculation_time, heuristic_version, 
-                     solution_list, coordinates, instance_str)
+function save_result(problem, cutting_num, TMC_num, green_num, red_num, hospital_num, WG, WR, epsilon, 
+                     best_cost, best_obj, aver_cost, aver_obj, worst_cost, worst_obj, total_time, aver_time, heuristic_version, 
+                     solution_list, coordinates, instance_str, case_study_flag)
     
     df = DataFrame(
         Problem=[problem],
@@ -75,9 +79,13 @@ function save_result(problem, cutting_num, TMC_num, green_num, red_num, hospital
         Non_Emergency_Patient_Weights = [WG],
         Emergency_Patient_Weights = [WR],
         Epsilon_Value = [epsilon],
-        Operation_Cost = [operation_cost],
-        Obj = [obj],
-        CPU_Time = [calculation_time],
+        Best_Obj = [best_obj],
+        Best_Cost = [best_cost],
+        Average_Obj = [aver_obj],
+        Average_Cost = [aver_cost],
+        Worst_Obj = [worst_obj],
+        Worst_Cost = [worst_cost],
+        Time = [aver_time],
     )
 
     log_dir = "result/heuristic"
@@ -97,7 +105,31 @@ function save_result(problem, cutting_num, TMC_num, green_num, red_num, hospital
         CSV.write(csv_file, df, append=true)
     end
 
-    draw_route(solution_list, coordinates, problem, TMC_num, green_num, red_num, hospital_num, cutting_num, obj, operation_cost, epsilon, instance_str, log_dir)
+    if case_study_flag
+        red_paths = solution_list[3]
+
+        x_coordinate, y_coordinate = [], []
+        for (x,y) in coordinates
+            push!(x_coordinate, x)
+            push!(y_coordinate, y)
+        end
+
+        mkpath(joinpath(log_dir, "save_dispatch_paths"))
+        file = open(string(joinpath(log_dir, "save_dispatch_paths"), instance_str), "w")
+
+        for (f, r, h) in red_paths
+            x1, y1 = x_coordinate[f], y_coordinate[f]
+            x2, y2 = x_coordinate[r], y_coordinate[r]
+            x3, y3 = x_coordinate[h], y_coordinate[h]
+            
+            println(file, "$(x1)\t$(y1)\t$(x2)\t$(y2)\t$(x3)\t$(y3)")
+        end
+
+        close(file)
+
+    end
+
+    draw_route(solution_list, coordinates, problem, TMC_num, green_num, red_num, hospital_num, cutting_num, best_obj, best_cost, epsilon, instance_str, log_dir) 
 
 end
 
@@ -144,11 +176,31 @@ function draw_route(solution_list, coord, problem, TMC_num, green_num, red_num, 
 
 end
 
-# develop rebalancing-clustering-route-SPLIT + vehicle build add
-function run_GA_clustering_route_split_vehicle_add(problem::String, node_size::Int64, TMC_num::Int64, green_num::Int64, red_num::Int64, hospital_num::Int64, WG::Int64, WR::Int64, 
+function draw_obj(obj_list, index, instance_str, heuristic_version)
+    
+    df = DataFrame(obj_list=obj_list)
+    
+    log_dir = "result/heuristic"
+    mkpath(log_dir)
+
+    log_dir = joinpath(log_dir, heuristic_version)
+    mkpath(log_dir)
+
+    if !isdir(joinpath(log_dir, "solution"))
+        mkpath(joinpath(log_dir, "solution"))
+    end
+
+    log_dir = joinpath(log_dir, "obj_csv")
+    mkpath(log_dir)
+    CSV.write(joinpath(log_dir, "$index, $instance_str.csv"), df)
+
+end
+
+function run_GA(problem::String, node_size::Int64, TMC_num::Int64, green_num::Int64, red_num::Int64, hospital_num::Int64, WG::Int64, WR::Int64, 
     service::Vector{Int64}, patient::Vector{Int64}, demand::Vector{Int64}, coordinate::Vector{Vector}, distance::Matrix{Float64}, travel::Matrix{Float64},
     N::Vector{Int64}, F::Vector{Int64}, G::Vector{Int64}, R::Vector{Int64}, H::Vector{Int64}, return_tmc::Vector{Int64}, capacity_vg::Int64, capacity_vr::Int64, 
-    capacity_room::Vector{Int64}, capacity_man::Vector{Int64}, EC_G::Int64, EC_R::Int64, VC_G::Int64, VC_R::Int64, FC::Int64, epsilon::Int64, instance_str::String, heuristic_version::String, verbose::Bool)
+    capacity_room::Vector{Int64}, capacity_man::Vector{Int64}, EC_G::Int64, EC_R::Int64, VC_G::Int64, VC_R::Int64, FC::Int64, epsilon::Int64, instance_str::String, 
+    heuristic_version::String, verbose::Bool, case_study_flag::Bool)
 
     ### Setting Problem Set, Parameter ###
     # F, G, R, H, Return_Depot = create_set(num_depot, num_green, num_red, num_hospital, N)
@@ -180,31 +232,23 @@ function run_GA_clustering_route_split_vehicle_add(problem::String, node_size::I
     ### GA Parameter ###
     # n = size(T)[1] - 2
     h = 0.3
-    # popsize = (30, 50)
-    popsize = (30, 50)
+    popsize = (10, 20)
     k_tournament = 2
-    num_iter = 2500
-    time_limit = 100.0
+    num_iter = 250
+    time_limit = 10000.0
     Mutation_Chance = 0.5
     num_runs = 10
     num_nei = 2
-    avg = 0.0
-    best = Inf
-    worst = 0.0
     crossover_functions = [2]
 
     
     ### Start GA ###
     P = Chromosome[]
     Elite_P = Chromosome[]
-    r_obj = 0.0
 
     avg_obj = 0.0
     best_obj = Inf
     worst_obj = 0.0
-    
-    best_r = 0.0
-    worst_r = Inf
 
     avg_cost = 0.0
     best_cost = Inf
@@ -215,22 +259,24 @@ function run_GA_clustering_route_split_vehicle_add(problem::String, node_size::I
         println("===========================================================================================================")
         println("Iter $(i) Start!")
 
-        P, roullet = perform_genetic_algorithm(node_size, travel, h, popsize, k_tournament, num_iter, time_limit, Mutation_Chance, num_nei, 
+        P, roullet, obj_vec = perform_genetic_algorithm(node_size, travel, h, popsize, k_tournament, num_iter, time_limit, Mutation_Chance, num_nei, 
                                                 crossover_functions, Customers, Depots, F, G, R, H, return_tmc, distance, service, patient, demand,
                                                 capacity_vg, capacity_vr, capacity_room, capacity_man, FC, EC_G, EC_R, VC_G, VC_R, WG, WR, coordinate, epsilon, verbose)
-        avg_obj += P[1].weighted_time
-        avg_cost += P[1].total_cost
-        if P[1].weighted_time < best_obj
-            best_obj = P[1].weighted_time
-            best_cost = P[1].total_cost
-            Elite_P = P[1]
+        avg_obj += P.weighted_time
+        avg_cost += P.total_cost
+        if P.weighted_time < best_obj
+            best_obj = P.weighted_time
+            best_cost = P.total_cost
+            Elite_P = P
         end
-        if P[1].weighted_time > worst_obj
-            worst_obj = P[1].weighted_time
-            worst_cost = P[1].total_cost
+        if P.weighted_time > worst_obj
+            worst_obj = P.weighted_time
+            worst_cost = P.total_cost
         end
 
         println("Elapsed time: $( round(time()-t1, digits=3) ) sec")
+
+        draw_obj(obj_vec, i, instance_str, heuristic_version)
     end
     calculation_time = time() - t1
 
@@ -239,9 +285,10 @@ function run_GA_clustering_route_split_vehicle_add(problem::String, node_size::I
     println("Best Route Operation Cost: ", round(best_cost, digits=3), "  Average Route Operation Cost: ", round(avg_cost / num_runs, digits=3), "  Worst Route Operation Cost: ", round(worst_cost, digits=3))
     println("Total Run time: ", round(calculation_time, digits=3), ", Average Run time: ", round(calculation_time / num_runs, digits=3))
     best_route(Elite_P)
-
+    
     solution_list = callback_variable(Elite_P)
-    save_result(problem, node_size, TMC_num, green_num, red_num, hospital_num, WG, WR, epsilon, best_cost, best_obj*WG + best_r*WR, calculation_time, heuristic_version, 
-                solution_list, coordinate, instance_str)
+    save_result(problem, node_size, TMC_num, green_num, red_num, hospital_num, WG, WR, epsilon, 
+                best_cost, best_obj, avg_cost/num_runs, avg_obj/num_runs, worst_cost, worst_obj, calculation_time, calculation_time/num_runs, 
+                heuristic_version, solution_list, coordinate, instance_str, case_study_flag)
 
 end
