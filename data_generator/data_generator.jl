@@ -1,8 +1,21 @@
 using Random
 
+include("augerat_matrix_generation_cut.jl")
+include("load_data_augerat.jl")
+include("duplicate_data_augerat.jl")
+
 
 Random.seed!(0)
 
+
+function get_data(original_data::Dict{Any, Any}, problem::String, augerat_data_::Dict{Any, Any}, cutting_num::Int64, tmc_num::Int64)
+    # Matrix Generation
+    data_tot = create_node_data(problem, augerat_data_, cutting_num) # cutting_num parameter 값에 따라 node cutting. node의 coordinates, qty(demand) return
+    mat = original_data[problem]
+    M, M_data = dup_data(data_tot, mat, cutting_num, tmc_num)
+
+    return M, M_data
+end
 
 function generate_hospital(coor::Vector{Vector}, hosptital_num::Int64)
 
@@ -76,12 +89,12 @@ function generate_service(N::Vector{Int64}, facility::Vector{Int64}, green::Vect
     return vec
 end
 
-function generate_travel(distance_matrix::Matrix{Float64}, velocity::Int64)
+function generate_travel(distance_matrix::Matrix{Float64}, velocity::Int64, scale::Int64)
     n = size(distance_matrix)[1]
     time_matrix = zeros(n, n)
     for i in 1:n
         for j in 1:n
-            time_matrix[i, j] = distance_matrix[i, j]/velocity
+            time_matrix[i, j] = distance_matrix[i, j]*scale/velocity 
         end
     end
     return time_matrix
