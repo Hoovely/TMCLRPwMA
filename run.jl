@@ -3,6 +3,7 @@ import Pandas.read_pickle
 include("data_generator/prodhon_matrix_generation.jl")
 include("formulation/formulation_0929v.jl")
 include("heuristic/src/main.jl")
+include("simulator/simulator.jl")
 
 
 function load_instance(folder_path)
@@ -127,14 +128,16 @@ function prodhon_experiment()
     folder_path = "data_generator/TMCLRP_Instance"
     instance_set = load_instance(folder_path)
 
+    scale = 100
     for (WG, WR) in [(1,1)]
         for (problem, number_f, number_g, number_r, number_h, coordi, service, patient, demand, budget, capa_room, capa_man) in instance_set    
-            if number_g + number_r >= 100 continue end
 
             cutting_num = number_f + number_g + number_r + number_h
             instance_str = "($cutting_num, $number_f, $number_g, $number_r, $number_h, $budget)"
             distance_matrix = prodhon_matrix(coordi, number_f)
-            Travel = generate_travel(distance_matrix, 1)
+            Travel = generate_travel(distance_matrix, 1, scale)
+            service = [s*scale for s in service]
+
             set_and_parameter = generate_set_and_parameter(cutting_num, number_f, number_g, number_r, number_h)
 
             println("CURRENTLY SOLVING ==> $problem")
@@ -148,7 +151,114 @@ function prodhon_experiment()
             println("BUDGET ==> $budget")
 
             # ### Mathematical programming ###
-            # formulation_version = "v0929"
+            # formulation_version = "v1106"
+            # run_math(problem, 
+            #          coordi,
+            #          cutting_num, 
+            #          number_f, 
+            #          number_g,
+            #          number_r,
+            #          number_h,
+            #          WG,
+            #          WR,
+            #          service,
+            #          patient,
+            #          demand,
+            #          distance_matrix,
+            #          Travel,
+            #          set_and_parameter[1],
+            #          set_and_parameter[2],
+            #          set_and_parameter[3],
+            #          set_and_parameter[4],
+            #          set_and_parameter[5],
+            #          set_and_parameter[6],
+            #          set_and_parameter[7],
+            #          set_and_parameter[8],
+            #          set_and_parameter[9],
+            #          capa_room, 
+            #          capa_man,
+            #          set_and_parameter[10],
+            #          set_and_parameter[11],
+            #          set_and_parameter[12],
+            #          set_and_parameter[13],
+            #          set_and_parameter[14],
+            #          set_and_parameter[15],
+            #          budget,
+            #          instance_str,
+            #          formulation_version)
+
+
+            # ### Heuristic algorithm ###
+            # heuristic_version = "v1106+"
+            # run_GA(problem, 
+            #         cutting_num,
+            #         number_f, 
+            #         number_g,
+            #         number_r,
+            #         number_h,
+            #         WG,
+            #         WR,
+            #         service,
+            #         patient,
+            #         demand,
+            #         coordi,
+            #         distance_matrix,
+            #         Travel,
+            #         set_and_parameter[1],
+            #         set_and_parameter[2],
+            #         set_and_parameter[3],
+            #         set_and_parameter[4],
+            #         set_and_parameter[5],
+            #         set_and_parameter[7],
+            #         set_and_parameter[8],
+            #         set_and_parameter[9],
+            #         capa_room, 
+            #         capa_man,
+            #         set_and_parameter[10],
+            #         set_and_parameter[11],
+            #         set_and_parameter[12],
+            #         set_and_parameter[13],
+            #         set_and_parameter[14],
+            #         budget,
+            #         instance_str,
+            #         heuristic_version,
+            #         true,
+            #         false)
+
+        end
+    end
+end
+
+function case_study()
+    folder_path = "data_generator/case_study_instance"
+    instance_set = load_instance(folder_path)
+
+    scale = 100
+    for (WG, WR) in [(1,1)]
+        for (problem, number_f, number_g, number_r, number_h, coordi, service, patient, demand, budget, capa_room, capa_man) in instance_set    
+
+            # if (number_f, number_g, number_r) != (10, 100, 200) continue end 
+
+            cutting_num = number_f + number_g + number_r + number_h
+            instance_str = "($cutting_num, $number_f, $number_g, $number_r, $number_h, $budget)"
+            distance_matrix = case_study_matrix(coordi, number_f)
+            Travel = generate_travel(distance_matrix, 1, scale)
+            service = [s*scale for s in service]
+
+            set_and_parameter = generate_set_and_parameter(cutting_num, number_f, number_g, number_r, number_h)
+
+            println("CURRENTLY SOLVING ==> $problem")
+            println("NODE SIZE ==> $cutting_num")
+            println("TEMPORARY MEDICAL CENTER NUMBER ==> $number_f")
+            println("NON-EMERGENCY PATIENT NUMBER ==> $number_g")
+            println("EMERGENCY PATIENT NUMBER ==> $number_r")
+            println("HOSPITAL NUMBER ==> $number_h")
+            println("NON-EMERGENCY PATIENT WEIGHTS ==> $WG")
+            println("EMERGENCY PATIENT WEIGHTS ==> $WR")
+            println("BUDGET ==> $budget")
+
+            # ### Mathematical programming ###
+            # formulation_version = "v1009_no_limit"
             # run_math(problem, 
             #          coordi,
             #          cutting_num, 
@@ -186,43 +296,85 @@ function prodhon_experiment()
 
 
             ### Heuristic algorithm ###
-            heuristic_version = "v0929_clustering_route_split_vehicle_add"
-            run_GA_clustering_route_split_vehicle_add(problem, 
-                                                    cutting_num,
-                                                    number_f, 
-                                                    number_g,
-                                                    number_r,
-                                                    number_h,
-                                                    WG,
-                                                    WR,
-                                                    service,
-                                                    patient,
-                                                    demand,
-                                                    coordi,
-                                                    distance_matrix,
-                                                    Travel,
-                                                    set_and_parameter[1],
-                                                    set_and_parameter[2],
-                                                    set_and_parameter[3],
-                                                    set_and_parameter[4],
-                                                    set_and_parameter[5],
-                                                    set_and_parameter[7],
-                                                    set_and_parameter[8],
-                                                    set_and_parameter[9],
-                                                    capa_room, 
-                                                    capa_man,
-                                                    set_and_parameter[10],
-                                                    set_and_parameter[11],
-                                                    set_and_parameter[12],
-                                                    set_and_parameter[13],
-                                                    set_and_parameter[14],
-                                                    budget,
-                                                    instance_str,
-                                                    heuristic_version,
-                                                    true)
+            heuristic_version = "v0122_case_study"
+            run_GA(problem, 
+                    cutting_num,
+                    number_f, 
+                    number_g,
+                    number_r,
+                    number_h,
+                    WG,
+                    WR,
+                    service,
+                    patient,
+                    demand,
+                    coordi,
+                    distance_matrix,
+                    Travel,
+                    set_and_parameter[1],
+                    set_and_parameter[2],
+                    set_and_parameter[3],
+                    set_and_parameter[4],
+                    set_and_parameter[5],
+                    set_and_parameter[7],
+                    set_and_parameter[8],
+                    set_and_parameter[9],
+                    capa_room, 
+                    capa_man,
+                    set_and_parameter[10],
+                    set_and_parameter[11],
+                    set_and_parameter[12],
+                    set_and_parameter[13],
+                    set_and_parameter[14],
+                    budget,
+                    instance_str,
+                    heuristic_version,
+                    true,
+                    true)
+
+
+            # ### Simulator ###
+            # simulator_version = "v0122"
+            # policy = "Greedy"
+            # policy = "Set Covering"
+            # simulator(problem, 
+            #         cutting_num,
+            #         number_f, 
+            #         number_g,
+            #         number_r,
+            #         number_h,
+            #         WG,
+            #         WR,
+            #         service,
+            #         patient,
+            #         demand,
+            #         coordi,
+            #         distance_matrix,
+            #         Travel,
+            #         set_and_parameter[1],
+            #         set_and_parameter[2],
+            #         set_and_parameter[3],
+            #         set_and_parameter[4],
+            #         set_and_parameter[5],
+            #         set_and_parameter[7],
+            #         set_and_parameter[8],
+            #         set_and_parameter[9],
+            #         capa_room, 
+            #         capa_man,
+            #         set_and_parameter[10],
+            #         set_and_parameter[11],
+            #         set_and_parameter[12],
+            #         set_and_parameter[13],
+            #         set_and_parameter[14],
+            #         budget,
+            #         instance_str,
+            #         simulator_version,
+            #         policy,
+            #         true)
 
         end
     end
 end
 
-prodhon_experiment()
+# prodhon_experiment()
+case_study()
